@@ -1,0 +1,18 @@
+[package]
+name = "rootcause-extras"
+version = "0.12.1"
+edition = "2024"
+
+[dependencies]
+# Internal dependencies
+rootcause = { path = "../", version = "=0.12.1" }
+
+serde.version = "1"
+serde.optional = true
+
+serde_json.version = "1"
+serde_json.optional = true
+
+[features]
+default = ["json"]
+json = ["dep:serde", "dep:serde_json"]

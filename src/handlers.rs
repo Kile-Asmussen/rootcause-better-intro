@@ -318,8 +318,8 @@ where
 ///
 /// # Formatting Behavior
 ///
-/// - **Display output**: "An object of type TypeName"
-/// - **Debug output**: "An object of type TypeName"
+/// - **Display output**: "A context/attachment of type TypeName"
+/// - **Debug output**: "A context/attachment of type TypeName"
 /// - **Source**: Always returns `None`
 ///
 /// # Example
@@ -349,11 +349,11 @@ pub struct Any;
 
 impl<A> AttachmentHandler<A> for Any {
     fn display(_context: &A, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "An object of type {}", core::any::type_name::<A>())
+        write!(f, "An context of type {}", core::any::type_name::<A>())
     }
 
     fn debug(_context: &A, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "An object of type {}", core::any::type_name::<A>())
+        write!(f, "A context of type {}", core::any::type_name::<A>())
     }
 }
 
@@ -363,10 +363,10 @@ impl<C> ContextHandler<C> for Any {
     }
 
     fn display(_context: &C, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "An object of type {}", core::any::type_name::<C>())
+        write!(f, "An attachment of type {}", core::any::type_name::<C>())
     }
 
     fn debug(_context: &C, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "An object of type {}", core::any::type_name::<C>())
+        write!(f, "An attachment of type {}", core::any::type_name::<C>())
     }
 }

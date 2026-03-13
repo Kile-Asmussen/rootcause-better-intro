@@ -1023,6 +1023,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rootcause-extras"
+version = "0.12.1"
+dependencies = [
+ "rootcause",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rootcause-internals"
 version = "0.12.1"
 dependencies = [
