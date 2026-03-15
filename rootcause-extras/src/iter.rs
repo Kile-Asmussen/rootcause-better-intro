@@ -2,7 +2,7 @@ use std::{collections::VecDeque, iter::FusedIterator, marker::PhantomData};
 
 use rootcause::{
     Report, ReportMut, ReportRef,
-    markers::{Cloneable, Dynamic, Mutable, ReportOwnershipMarker, Uncloneable},
+    markers::{Cloneable, Dynamic, ReportOwnershipMarker, Uncloneable},
 };
 
 /// An iterator over a report and all its descendant reports in breadth-first
