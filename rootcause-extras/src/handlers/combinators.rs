@@ -6,6 +6,12 @@ use rootcause::handlers::{
     ContextFormattingStyle, ContextHandler, Display, FormattingFunction,
 };
 
+/// Attachement and Context handler combinator that redacts sensitive information when
+/// rendering a full report. The innder handler is by default [`Debug`].
+///
+/// - **Debug output:** delegated to the inner handler.
+/// - **Display output:** `Redacted attachment/context of type <typename>`
+/// - **Preferred formatting:** overrides
 pub struct Redacted<T: 'static, H = rootcause::handlers::Debug>(PhantomData<(T, H)>);
 
 impl<T: 'static, H: AttachmentHandler<T>> AttachmentHandler<T> for Redacted<T, H> {
@@ -57,6 +63,11 @@ impl<T: 'static, H: ContextHandler<T>> ContextHandler<T> for Redacted<T, H> {
     }
 }
 
+/// Attachment handler combinator that overrides the display type to be [`Hidden`].
+///
+///
+///
+/// [`Hidden`]: AttachmentFormattingPlacement::Hidden
 pub struct Hidden<T: 'static, H: AttachmentHandler<T> = Display>(PhantomData<(T, H)>);
 
 impl<T: 'static, H: AttachmentHandler<T>> AttachmentHandler<T> for Hidden<T, H> {
@@ -79,9 +90,14 @@ impl<T: 'static, H: AttachmentHandler<T>> AttachmentHandler<T> for Hidden<T, H> 
     }
 }
 
-pub struct Priority<T: 'static, const PRIORITY: i32 = 10, H: AttachmentHandler<T> = Display>(
+pub struct Priority<T: 'static, H: AttachmentHandler<T> = Display, const PRIORITY: i32 = 0>(
     PhantomData<(T, H)>,
 );
+
+pub type LowPriority<T, H = Display> = Priority<T, H, -10>;
+pub type LowestPriority<T, H = Display> = Priority<T, H, -100>;
+pub type HighPriority<T, H = Display> = Priority<T, H, 10>;
+pub type HighestPriority<T, H = Display> = Priority<T, H, 100>;
 
 impl<T: 'static, H: AttachmentHandler<T>, const P: i32> AttachmentHandler<T> for Priority<T, H, P> {
     fn display(value: &T, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

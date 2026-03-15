@@ -57,9 +57,9 @@ impl<'a, Data> fmt::Debug for FormatFunctions<'a, Data> {
     }
 }
 
-pub struct FormatterWriter<'a>(&'a mut fmt::Formatter<'a>);
+pub struct FormatterWriter<'a, 'b: 'a>(&'a mut fmt::Formatter<'b>);
 
-impl<'a> io::Write for FormatterWriter<'a> {
+impl<'a, 'b: 'a> io::Write for FormatterWriter<'a, 'b> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let utf8 = str::from_utf8(buf).map_err(io::Error::other)?;
         self.0.write_str(utf8).map_err(io::Error::other)?;
@@ -71,8 +71,8 @@ impl<'a> io::Write for FormatterWriter<'a> {
     }
 }
 
-impl<'a> FormatterWriter<'a> {
-    pub fn new(fmt: &'a mut fmt::Formatter<'a>) -> Self {
+impl<'a, 'b: 'a> FormatterWriter<'a, 'b> {
+    pub fn new(fmt: &'a mut fmt::Formatter<'b>) -> Self {
         Self(fmt)
     }
 }
