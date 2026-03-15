@@ -43,7 +43,7 @@ mod limit_field_access {
         /// 2. If `A` is a `Sized` type: The attachment embedded in the
         ///    [`RawAttachmentMut`] must be of type `A`.
         raw: RawAttachmentMut<'a>,
-        _attachment: PhantomData<Attachment>,
+        _marker: PhantomData<Attachment>,
     }
 
     impl<'a, A: ?Sized + 'static> ReportAttachmentMut<'a, A> {
@@ -64,7 +64,7 @@ mod limit_field_access {
             // 2. Guaranteed by the caller
             ReportAttachmentMut {
                 raw,
-                _attachment: PhantomData,
+                _marker: PhantomData,
             }
         }
 

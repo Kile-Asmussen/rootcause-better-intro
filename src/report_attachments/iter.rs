@@ -213,7 +213,7 @@ mod limit_field_access {
         /// 2. If `T = SendSync`: All of the inner attachments must be `Send +
         ///    Sync`.
         raw: alloc::vec::IntoIter<RawAttachment>,
-        _thread_safety: PhantomData<ThreadMarker>,
+        _marker: PhantomData<ThreadMarker>,
     }
 
     impl<T> ReportAttachmentsIntoIter<T> {
@@ -234,7 +234,7 @@ mod limit_field_access {
             // 2. Guaranteed by the caller
             Self {
                 raw,
-                _thread_safety: PhantomData,
+                _marker: PhantomData,
             }
         }
 

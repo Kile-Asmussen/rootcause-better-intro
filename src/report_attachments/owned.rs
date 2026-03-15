@@ -42,7 +42,7 @@ mod limit_field_access {
         /// 2. If `T = SendSync`: All of the inner attachments must be `Send +
         ///    Sync`.
         raw: Vec<RawAttachment>,
-        _thread_safety: PhantomData<ThreadSafety>,
+        _marker: PhantomData<ThreadSafety>,
     }
 
     impl<T> ReportAttachments<T> {
@@ -63,7 +63,7 @@ mod limit_field_access {
             // 2. Guaranteed by the caller
             Self {
                 raw,
-                _thread_safety: PhantomData,
+                _marker: PhantomData,
             }
         }
 

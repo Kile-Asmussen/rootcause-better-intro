@@ -101,8 +101,7 @@ mod limit_field_access {
         /// 8. If `T = Local`: No other references to this report are allowed to
         ///    have `T = SendSync`
         raw: RawReportMut<'a>,
-        _context: PhantomData<Context>,
-        _thread_safety: PhantomData<ThreadSafety>,
+        _markers: PhantomData<(PhantomData<Context>, ThreadSafety)>,
     }
 
     impl<'a, C: ?Sized, T> ReportMut<'a, C, T> {
@@ -136,8 +135,7 @@ mod limit_field_access {
             // 7. Guaranteed by our caller
             Self {
                 raw,
-                _context: PhantomData,
-                _thread_safety: PhantomData,
+                _markers: PhantomData,
             }
         }
 

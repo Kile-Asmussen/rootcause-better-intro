@@ -58,8 +58,7 @@ mod limit_field_access {
         ///    invariant number 5 is upheld for the entire lifetime of the `&'a
         ///    mut Vec<RawReport>`.
         raw: Vec<RawReport>,
-        _context: PhantomData<Context>,
-        _thread_safety: PhantomData<ThreadSafety>,
+        _markers: PhantomData<(PhantomData<Context>, ThreadSafety)>,
     }
 
     impl<C: ?Sized, T> ReportCollection<C, T> {
@@ -91,8 +90,7 @@ mod limit_field_access {
             // 6. Not applicable
             Self {
                 raw,
-                _context: PhantomData,
-                _thread_safety: PhantomData,
+                _markers: PhantomData,
             }
         }
 

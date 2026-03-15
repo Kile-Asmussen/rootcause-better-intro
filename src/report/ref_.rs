@@ -106,9 +106,7 @@ mod limit_field_access {
         /// [`RawReport`]: rootcause_internals::RawReport
         /// [`Mutable`]: crate::markers::Mutable
         raw: RawReportRef<'a>,
-        _context: PhantomData<Context>,
-        _ownership: PhantomData<Ownership>,
-        _thread_safety: PhantomData<ThreadSafety>,
+        _markers: PhantomData<(PhantomData<Context>, Ownership, ThreadSafety)>,
     }
 
     impl<'a, C: ?Sized, O, T> ReportRef<'a, C, O, T> {
@@ -148,9 +146,7 @@ mod limit_field_access {
             // 7. Guaranteed by our caller
             Self {
                 raw,
-                _context: PhantomData,
-                _ownership: PhantomData,
-                _thread_safety: PhantomData,
+                _markers: PhantomData,
             }
         }
 

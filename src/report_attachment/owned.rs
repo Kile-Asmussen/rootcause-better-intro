@@ -53,8 +53,7 @@ mod limit_field_access {
         /// 4. If `T = SendSync`: The attachment embedded in the
         ///    [`RawAttachment`] must be `Send + Sync`.
         raw: RawAttachment,
-        _attachment: PhantomData<Attachment>,
-        _thread_safety: PhantomData<ThreadSafety>,
+        _markers: PhantomData<(PhantomData<Attachment>, ThreadSafety)>,
     }
 
     impl<A: ?Sized, T> ReportAttachment<A, T> {
@@ -79,8 +78,7 @@ mod limit_field_access {
             // 4. Guaranteed by caller
             ReportAttachment {
                 raw,
-                _attachment: PhantomData,
-                _thread_safety: PhantomData,
+                _markers: PhantomData,
             }
         }
 

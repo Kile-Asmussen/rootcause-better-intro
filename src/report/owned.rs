@@ -101,9 +101,7 @@ mod limit_field_access {
         /// 8. If `T = SendSync`: All contexts and attachments in the report and
         ///    all sub-reports must be `Send+Sync`.
         raw: RawReport,
-        _context: PhantomData<Context>,
-        _ownership: PhantomData<Ownership>,
-        _thread_safety: PhantomData<ThreadSafety>,
+        _markers: PhantomData<(PhantomData<Context>, Ownership, ThreadSafety)>,
     }
 
     impl<C: ?Sized, O, T> Report<C, O, T> {
@@ -142,9 +140,7 @@ mod limit_field_access {
             // 8. Guaranteed by the caller
             Self {
                 raw,
-                _context: PhantomData,
-                _ownership: PhantomData,
-                _thread_safety: PhantomData,
+                _markers: PhantomData,
             }
         }
 

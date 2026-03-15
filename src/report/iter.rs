@@ -13,8 +13,7 @@ use crate::{ReportRef, markers::Dynamic};
 #[must_use]
 pub struct ReportIter<'a, Ownership: 'static, ThreadSafety: 'static> {
     stack: Vec<ReportRef<'a, Dynamic, Ownership, ThreadSafety>>,
-    _ownership: PhantomData<Ownership>,
-    _thread_safety: PhantomData<ThreadSafety>,
+    _markers: PhantomData<(Ownership, ThreadSafety)>,
 }
 
 impl<'a, O, T> ReportIter<'a, O, T> {
@@ -22,8 +21,7 @@ impl<'a, O, T> ReportIter<'a, O, T> {
     pub(crate) fn from_raw(stack: Vec<ReportRef<'a, Dynamic, O, T>>) -> Self {
         Self {
             stack,
-            _ownership: PhantomData,
-            _thread_safety: PhantomData,
+            _markers: PhantomData,
         }
     }
 }

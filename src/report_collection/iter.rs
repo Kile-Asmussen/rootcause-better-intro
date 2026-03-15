@@ -56,8 +56,7 @@ mod limit_field_access {
         /// 5. If `T = SendSync`: All contexts and attachments in the
         ///    [`RawReport`]s and all sub-reports must be `Send+Sync`.
         raw: core::slice::Iter<'a, RawReport>,
-        _context: PhantomData<Context>,
-        _thread_safety: PhantomData<ThreadSafety>,
+        _markers: PhantomData<(PhantomData<Context>, ThreadSafety)>,
     }
 
     impl<'a, C: ?Sized, T> ReportCollectionIter<'a, C, T> {
@@ -87,8 +86,7 @@ mod limit_field_access {
             // 5. Guaranteed by the caller
             Self {
                 raw: raw.iter(),
-                _context: PhantomData,
-                _thread_safety: PhantomData,
+                _markers: PhantomData,
             }
         }
 
@@ -250,8 +248,7 @@ mod limit_field_access2 {
         /// 5. If `T = SendSync`: All contexts and attachments in the
         ///    [`RawReport`]s and all sub-reports must be `Send+Sync`.
         raw: alloc::vec::IntoIter<RawReport>,
-        _context: PhantomData<fn(Context) -> Context>,
-        _thread_safety: PhantomData<ThreadSafety>,
+        _markers: PhantomData<(fn(Context) -> Context, ThreadSafety)>,
     }
 
     impl<C: ?Sized, T> ReportCollectionIntoIter<C, T> {
@@ -282,8 +279,7 @@ mod limit_field_access2 {
             // 5. Guaranteed by the caller
             Self {
                 raw: raw.into_iter(),
-                _context: PhantomData,
-                _thread_safety: PhantomData,
+                _markers: PhantomData,
             }
         }
 
