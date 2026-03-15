@@ -8,3 +8,8 @@ edition = "2024"
 rootcause = { path = "../", version = "=0.12.1" }
 rootcause-backtrace = { path = "../rootcause-backtrace", version = "=0.12.1" }
 
+chrono = { version = "0.4.44", optional  = true, features = ["std"] }
+
+[features]
+default = ["chrono"]
+chrono = ["dep:chrono"]

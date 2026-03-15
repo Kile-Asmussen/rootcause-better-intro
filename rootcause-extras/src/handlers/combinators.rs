@@ -141,3 +141,67 @@ impl<T: 'static, H: AttachmentHandler<T>, const P: i32> AttachmentHandler<T> for
         }
     }
 }
+
+pub struct WithHeading<T: 'static, H: AttachmentHandler<T> = Display>(PhantomData<fn(T) -> H>);
+
+impl<T: 'static, H: AttachmentHandler<T>> AttachmentHandler<(&'static str, T)>
+    for WithHeading<T, H>
+{
+    fn display(
+        value: &(&'static str, T),
+        formatter: &mut core::fmt::Formatter<'_>,
+    ) -> core::fmt::Result {
+        H::display(&value.1, formatter)
+    }
+
+    fn debug(
+        value: &(&'static str, T),
+        formatter: &mut core::fmt::Formatter<'_>,
+    ) -> core::fmt::Result {
+        H::debug(&value.1, formatter)
+    }
+
+    fn preferred_formatting_style(
+        value: &(&'static str, T),
+        report_formatting_function: FormattingFunction,
+    ) -> AttachmentFormattingStyle {
+        let _ = value;
+        AttachmentFormattingStyle {
+            placement: AttachmentFormattingPlacement::InlineWithHeader { header: value.0 },
+            ..H::preferred_formatting_style(&value.1, report_formatting_function)
+        }
+    }
+}
+
+pub struct AsAppendix<T: 'static, H: AttachmentHandler<T> = Display>(PhantomData<fn(T) -> H>);
+
+impl<T: 'static, H: AttachmentHandler<T>> AttachmentHandler<(&'static str, T)>
+    for AsAppendix<T, H>
+{
+    fn display(
+        value: &(&'static str, T),
+        formatter: &mut core::fmt::Formatter<'_>,
+    ) -> core::fmt::Result {
+        H::display(&value.1, formatter)
+    }
+
+    fn debug(
+        value: &(&'static str, T),
+        formatter: &mut core::fmt::Formatter<'_>,
+    ) -> core::fmt::Result {
+        H::debug(&value.1, formatter)
+    }
+
+    fn preferred_formatting_style(
+        value: &(&'static str, T),
+        report_formatting_function: FormattingFunction,
+    ) -> AttachmentFormattingStyle {
+        let _ = value;
+        AttachmentFormattingStyle {
+            placement: AttachmentFormattingPlacement::Appendix {
+                appendix_name: value.0,
+            },
+            ..H::preferred_formatting_style(&value.1, report_formatting_function)
+        }
+    }
+}
