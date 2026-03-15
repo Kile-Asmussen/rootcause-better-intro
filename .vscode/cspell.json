@@ -3,9 +3,11 @@
     "minWordLength": 1,
     "words": [
         "acq",
+        "Bfs",
         "bz2",
         "cfgs",
         "ctx",
+        "Deque",
         "docsrs",
         "dyn",
         "env",

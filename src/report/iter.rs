@@ -10,6 +10,9 @@ use crate::{ReportRef, markers::Dynamic};
 /// in the hierarchy. The iterator traverses the report tree in a depth-first
 /// manner, starting from the root report and visiting each child report before
 /// moving to the next sibling.
+///
+/// <!-- should this even be in rootcause proper? seems a better fit for a full
+/// suite of iteration tools in rootcause-extras. -->
 #[must_use]
 pub struct ReportIter<'a, Ownership: 'static, ThreadSafety: 'static> {
     stack: Vec<ReportRef<'a, Dynamic, Ownership, ThreadSafety>>,
@@ -30,7 +33,6 @@ impl<'a, O, T> ReportIter<'a, O, T> {
 
 impl<'a, O, T> Iterator for ReportIter<'a, O, T> {
     type Item = ReportRef<'a, Dynamic, O, T>;
-
     fn next(&mut self) -> Option<Self::Item> {
         let cur: ReportRef<'a, Dynamic, O, T> = self.stack.pop()?;
 
@@ -48,6 +50,8 @@ impl<'a, O, T> Iterator for ReportIter<'a, O, T> {
                     // @add-unsafe-context: Dynamic
                     ReportRef::<Dynamic, O, T>::from_cloneable(child_report)
                 }
+                // Note: The need for the above unsafe call can be replaced by two separate
+                // implementations of Iterator for Clonable and Unclonable. See ReportIterBfs.
             })
             .rev();
         self.stack.extend(new_children);

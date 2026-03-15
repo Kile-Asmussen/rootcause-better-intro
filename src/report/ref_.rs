@@ -265,6 +265,8 @@ impl<'a, C: ?Sized, O, T> ReportRef<'a, C, O, T> {
     /// The caller must ensure:
     ///
     /// 1. `O` must either be `Cloneable` or `Uncloneable`.
+    ///
+    /// <!-- Note: is this really a necessary abstraction? It is only used in ReportIter. -->
     pub(crate) unsafe fn from_cloneable(
         report: ReportRef<'a, C, Cloneable, T>,
     ) -> ReportRef<'a, C, O, T> {
