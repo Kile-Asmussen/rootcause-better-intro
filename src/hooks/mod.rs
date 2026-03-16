@@ -70,7 +70,7 @@ pub mod context_formatter;
 pub mod report_creation;
 pub mod report_formatter;
 
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::boxed::Box;
 use core::{
     ptr::NonNull,
     sync::atomic::{AtomicPtr, Ordering},
@@ -78,12 +78,9 @@ use core::{
 
 use self::{
     attachment_formatter::AttachmentFormatterHook,
-    builtin_hooks::location::{Location, LocationHandler, LocationHook},
+    builtin_hooks::location::Location,
     context_formatter::ContextFormatterHook,
-    report_creation::{
-        AttachmentCollector, ReportCreationHook, StoredReportCreationHook,
-        attachment_hook_to_stored_hook, creation_hook_to_stored_hook,
-    },
+    report_creation::{AttachmentCollector, ReportCreationHook},
     report_formatter::ReportFormatter,
 };
 
@@ -193,7 +190,7 @@ impl Default for Hooks {
 //   `replace()` or `reclaim()`, the `HookData` is leaked.
 #[derive(Debug)]
 pub(crate) struct HookData {
-    pub(crate) report_creation: Vec<Box<dyn StoredReportCreationHook>>,
+    pub(crate) report_creation: report_creation::HookList,
     pub(crate) attachment_formatters: attachment_formatter::HookMap,
     pub(crate) context_formatters: context_formatter::HookMap,
     pub(crate) report_formatter: Option<Box<dyn ReportFormatter>>,
@@ -254,9 +251,7 @@ impl Hooks {
     #[track_caller]
     pub fn new() -> Self {
         Self(Box::new(HookData {
-            report_creation: vec![attachment_hook_to_stored_hook::<_, LocationHandler, _>(
-                LocationHook,
-            )],
+            report_creation: report_creation::HookList::new_with_locations(),
             attachment_formatters: Default::default(),
             context_formatters: Default::default(),
             report_formatter: None,
@@ -281,7 +276,7 @@ impl Hooks {
     #[track_caller]
     pub fn new_without_locations() -> Self {
         Self(Box::new(HookData {
-            report_creation: Vec::new(),
+            report_creation: Default::default(),
             attachment_formatters: Default::default(),
             context_formatters: Default::default(),
             report_formatter: None,
@@ -317,11 +312,7 @@ impl Hooks {
         A: 'static + Send + Sync,
         C: AttachmentCollector<A> + Send + Sync + 'static,
     {
-        self.0
-            .report_creation
-            .push(attachment_hook_to_stored_hook::<A, C::Handler, C>(
-                collector,
-            ));
+        self.0.report_creation.push_collector(collector);
         self
     }
 
@@ -361,9 +352,7 @@ impl Hooks {
     where
         H: ReportCreationHook + Send + Sync + 'static,
     {
-        self.0
-            .report_creation
-            .push(creation_hook_to_stored_hook(hook));
+        self.0.report_creation.push_hook(hook);
         self
     }
 

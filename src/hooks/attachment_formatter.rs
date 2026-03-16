@@ -177,79 +177,12 @@ use rootcause_internals::handlers::{AttachmentFormattingStyle, FormattingFunctio
 
 use crate::{
     ReportRef,
+    format_helpers::DisplayDebug,
     hooks::{HookData, use_hooks},
     markers::{Dynamic, Local, Uncloneable},
     preformatted::PreformattedAttachment,
     report_attachment::ReportAttachmentRef,
 };
-
-#[derive(Default)]
-pub(crate) struct HookMap {
-    /// # Safety Invariant
-    ///
-    /// The hook stored under `TypeId::of::<A>()` is guaranteed to be an
-    /// instance of the type `Hook<A, H>`.
-    map: HashMap<TypeId, Box<dyn StoredHook>, rustc_hash::FxBuildHasher>,
-}
-
-impl core::fmt::Debug for HookMap {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.map.values().fmt(f)
-    }
-}
-
-impl HookMap {
-    /// Retrieves the formatter hook for the specified attachment
-    /// type.
-    ///
-    /// The returned hook is guaranteed to be an instance of type `Hook<A, H>`,
-    /// where `TypeId::of::<A>() == type_id`.
-    fn get(&self, type_id: TypeId) -> Option<&dyn StoredHook> {
-        Some(&**self.map.get(&type_id)?)
-    }
-
-    pub(crate) fn insert<A, H>(&mut self, hook: H)
-    where
-        A: Sized + 'static,
-        H: AttachmentFormatterHook<A>,
-    {
-        let hook: Hook<A, H> = Hook {
-            hook,
-            _hooked_type: PhantomData,
-        };
-        let hook: Box<Hook<A, H>> = Box::new(hook);
-        // We must uphold the safety invariant of HookMap.
-        //
-        // The safety invariant requires that the hook stored under
-        // `TypeId::of::<A>()` is always of type `Hook<A, H>`.
-        //
-        // However this is exactly what we are doing here,
-        // so the invariant is upheld.
-        self.map.insert(TypeId::of::<A>(), hook);
-    }
-}
-
-struct Hook<A, H>
-where
-    A: 'static,
-{
-    hook: H,
-    _hooked_type: PhantomData<fn(A) -> A>,
-}
-
-impl<A, H> core::fmt::Debug for Hook<A, H>
-where
-    A: 'static,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "AttachmentFormattingHook<{}, {}>",
-            core::any::type_name::<A>(),
-            core::any::type_name::<H>(),
-        )
-    }
-}
 
 /// Information about the parent report that contains an attachment being
 /// formatted.
@@ -297,61 +230,6 @@ pub struct AttachmentParent<'a> {
     pub report: ReportRef<'a, Dynamic, Uncloneable, Local>,
     /// Index of this attachment within the parent report's attachment list
     pub attachment_index: usize,
-}
-
-/// Trait for untyped attachment formatter hooks.
-///
-/// This trait is guaranteed to only be implemented for [`Hook<A, H>`].
-trait StoredHook: 'static + Send + Sync + core::fmt::Debug {
-    /// Formats the attachment using Display formatting.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure:
-    ///
-    /// 1. The type `A` stored in the attachment matches the `A` from type
-    ///    `Hook<A, H>` this is implemented for.
-    unsafe fn display(
-        &self,
-        attachment: ReportAttachmentRef<'_, Dynamic>,
-        attachment_parent: Option<AttachmentParent<'_>>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result;
-
-    /// Formats the attachment using Debug formatting.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure:
-    ///
-    /// 1. The type `A` stored in the attachment matches the `A` from type
-    ///    `Hook<A, H>` this is implemented for.
-    unsafe fn debug(
-        &self,
-        attachment: ReportAttachmentRef<'_, Dynamic>,
-        attachment_parent: Option<AttachmentParent<'_>>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result;
-
-    fn display_preformatted(
-        &self,
-        attachment: ReportAttachmentRef<'_, PreformattedAttachment>,
-        attachment_parent: Option<AttachmentParent<'_>>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result;
-
-    fn debug_preformatted(
-        &self,
-        attachment: ReportAttachmentRef<'_, PreformattedAttachment>,
-        attachment_parent: Option<AttachmentParent<'_>>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result;
-
-    fn preferred_formatting_style(
-        &self,
-        attachment: ReportAttachmentRef<'_, Dynamic>,
-        report_formatting_function: FormattingFunction,
-    ) -> AttachmentFormattingStyle;
 }
 
 /// Trait for customizing how attachments of a specific type are formatted in
@@ -609,7 +487,7 @@ pub trait AttachmentFormatterHook<A>: 'static + Send + Sync {
     /// impl AttachmentFormatterHook<String> for MyFormatter {
     ///     fn preferred_formatting_style(
     ///         &self,
-    ///         _attachment: ReportAttachmentRef<'_, Dynamic>,
+    ///         _attachment: ReportAttachmentRef<'_, A>,
     ///         formatting_function: FormattingFunction,
     ///     ) -> AttachmentFormattingStyle {
     ///         AttachmentFormattingStyle {
@@ -622,148 +500,311 @@ pub trait AttachmentFormatterHook<A>: 'static + Send + Sync {
     /// ```
     fn preferred_formatting_style(
         &self,
-        attachment: ReportAttachmentRef<'_, Dynamic>,
+        attachment: ReportAttachmentRef<'_, A>,
         report_formatting_function: FormattingFunction,
     ) -> AttachmentFormattingStyle {
         attachment.preferred_formatting_style_unhooked(report_formatting_function)
     }
+
+    /// Determines the preferred formatting style for this attachment.
+    ///
+    /// This method allows the formatter to specify how the attachment should be
+    /// presented in the overall report structure (inline, in
+    /// appendix, not at all, etc.) The default implementation delegates to the
+    /// attachment's unhooked preference.
+    ///
+    /// # Arguments
+    ///
+    /// * `attachment` - Reference to the attachment (as [`Dynamic`] as it can
+    ///   be either `A` or a [`PreformattedAttachment`])
+    /// * `report_formatting_function` - Whether the overall report uses Display
+    ///   or Debug formatting
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rootcause::{
+    ///     handlers::{AttachmentFormattingPlacement, AttachmentFormattingStyle, FormattingFunction},
+    ///     hooks::attachment_formatter::{AttachmentFormatterHook, AttachmentParent},
+    ///     markers::Dynamic,
+    ///     report_attachment::ReportAttachmentRef,
+    /// };
+    ///
+    /// struct MyFormatter;
+    /// impl AttachmentFormatterHook<String> for MyFormatter {
+    ///     fn preferred_formatting_style_preformatted(
+    ///         &self,
+    ///         _attachment: ReportAttachmentRef<'_, PreformattedAttachment>,
+    ///         formatting_function: FormattingFunction,
+    ///     ) -> AttachmentFormattingStyle {
+    ///         AttachmentFormattingStyle {
+    ///             placement: AttachmentFormattingPlacement::InlineWithHeader { header: "Pref" },
+    ///             function: formatting_function,
+    ///             priority: 100,
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    fn preferred_formatting_style_preformatted(
+        &self,
+        attachment: ReportAttachmentRef<'_, PreformattedAttachment>,
+        report_formatting_function: FormattingFunction,
+    ) -> AttachmentFormattingStyle {
+        attachment.preferred_formatting_style_unhooked(report_formatting_function)
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct HookMap {
+    /// # Safety Invariant
+    ///
+    /// The hook stored under `TypeId::of::<A>()` is guaranteed to be an
+    /// instance of the type `Hook<A, H>`.
+    map: HashMap<TypeId, Box<dyn StoredHook>, rustc_hash::FxBuildHasher>,
+}
+
+impl core::fmt::Debug for HookMap {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.map.values().fmt(f)
+    }
+}
+
+impl HookMap {
+    /// Retrieves the formatter hook for the specified attachment
+    /// type.
+    ///
+    /// The returned hook is guaranteed to be an instance of type `Hook<A, H>`,
+    /// where `TypeId::of::<A>() == type_id`.
+    fn get(&self, type_id: TypeId) -> Option<&dyn StoredHook> {
+        Some(&**self.map.get(&type_id)?)
+    }
+
+    pub(crate) fn insert<A, H>(&mut self, hook: H)
+    where
+        A: Sized + 'static,
+        H: AttachmentFormatterHook<A>,
+    {
+        let hook: Hook<A, H> = Hook {
+            hook,
+            _hooked_type: PhantomData,
+        };
+        let hook: Box<Hook<A, H>> = Box::new(hook);
+        // We must uphold the safety invariant of HookMap.
+        //
+        // The safety invariant requires that the hook stored under
+        // `TypeId::of::<A>()` is always of type `Hook<A, H>`.
+        //
+        // However this is exactly what we are doing here,
+        // so the invariant is upheld.
+        self.map.insert(TypeId::of::<A>(), hook);
+    }
+}
+
+struct Hook<A, H>
+where
+    A: 'static,
+{
+    hook: H,
+    _hooked_type: PhantomData<fn(A) -> A>,
+}
+
+impl<A, H> core::fmt::Debug for Hook<A, H>
+where
+    A: 'static,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "AttachmentFormattingHook<{}, {}>",
+            core::any::type_name::<A>(),
+            core::any::type_name::<H>(),
+        )
+    }
+}
+
+/// Trait for untyped attachment formatter hooks.
+///
+/// This trait is guaranteed to only be implemented for [`Hook<A, H>`].
+trait StoredHook: 'static + Send + Sync + core::fmt::Debug {
+    fn format(
+        &self,
+        attachment: ReportAttachmentRef<'_, Dynamic>,
+        attachment_parent: Option<AttachmentParent<'_>>,
+        formatter: &mut fmt::Formatter<'_>,
+        report_formatting_function: FormattingFunction,
+    ) -> fmt::Result;
+
+    fn format_preformatted(
+        &self,
+        attachment: ReportAttachmentRef<'_, PreformattedAttachment>,
+        attachment_parent: Option<AttachmentParent<'_>>,
+        formatter: &mut fmt::Formatter<'_>,
+        report_formatting_function: FormattingFunction,
+    ) -> fmt::Result;
+
+    fn preferred_formatting_style(
+        &self,
+        attachment: ReportAttachmentRef<'_, Dynamic>,
+        _: (),
+        _: (),
+        report_formatting_function: FormattingFunction,
+    ) -> AttachmentFormattingStyle;
+
+    fn preferred_formatting_style_preformatted(
+        &self,
+        attachment: ReportAttachmentRef<'_, PreformattedAttachment>,
+        _: (),
+        _: (),
+        report_formatting_function: FormattingFunction,
+    ) -> AttachmentFormattingStyle;
+}
+
+fn format_unhooked(
+    attachment: ReportAttachmentRef<'_, Dynamic>,
+    _: Option<AttachmentParent<'_>>,
+    formatter: &mut fmt::Formatter<'_>,
+    report_formatting_function: FormattingFunction,
+) -> fmt::Result {
+    attachment
+        .format_inner_unhooked()
+        .fmt(formatter, report_formatting_function)
+}
+
+fn preferred_formatting_style_unhooked(
+    attachment: ReportAttachmentRef<'_, Dynamic>,
+    _: (),
+    _: (),
+    report_formatting_function: FormattingFunction,
+) -> AttachmentFormattingStyle {
+    attachment.preferred_formatting_style_unhooked(report_formatting_function)
 }
 
 impl<A, H> StoredHook for Hook<A, H>
 where
     H: AttachmentFormatterHook<A>,
 {
-    unsafe fn display(
+    fn format(
         &self,
         attachment: ReportAttachmentRef<'_, Dynamic>,
         attachment_parent: Option<AttachmentParent<'_>>,
         formatter: &mut fmt::Formatter<'_>,
+        report_formatting_function: FormattingFunction,
     ) -> fmt::Result {
-        // SAFETY:
-        // 1. Guaranteed by the caller
-        let attachment = unsafe { attachment.downcast_attachment_unchecked::<A>() };
-        self.hook.display(attachment, attachment_parent, formatter)
+        let attachment = attachment.downcast_attachment().ok_or(fmt::Error)?;
+        match report_formatting_function {
+            FormattingFunction::Display => {
+                self.hook.display(attachment, attachment_parent, formatter)
+            }
+            FormattingFunction::Debug => self.hook.debug(attachment, attachment_parent, formatter),
+        }
     }
 
-    unsafe fn debug(
-        &self,
-        attachment: ReportAttachmentRef<'_, Dynamic>,
-        attachment_parent: Option<AttachmentParent<'_>>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
-        // SAFETY:
-        // 1. Guaranteed by the caller
-        let attachment = unsafe { attachment.downcast_attachment_unchecked::<A>() };
-        self.hook.debug(attachment, attachment_parent, formatter)
-    }
-
-    fn display_preformatted(
+    fn format_preformatted(
         &self,
         attachment: ReportAttachmentRef<'_, PreformattedAttachment>,
         attachment_parent: Option<AttachmentParent<'_>>,
         formatter: &mut fmt::Formatter<'_>,
+        report_formatting_function: FormattingFunction,
     ) -> fmt::Result {
-        self.hook
-            .display_preformatted(attachment, attachment_parent, formatter)
-    }
-
-    fn debug_preformatted(
-        &self,
-        attachment: ReportAttachmentRef<'_, PreformattedAttachment>,
-        attachment_parent: Option<AttachmentParent<'_>>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
-        self.hook
-            .debug_preformatted(attachment, attachment_parent, formatter)
+        match report_formatting_function {
+            FormattingFunction::Display => {
+                self.hook
+                    .display_preformatted(attachment, attachment_parent, formatter)
+            }
+            FormattingFunction::Debug => {
+                self.hook
+                    .debug_preformatted(attachment, attachment_parent, formatter)
+            }
+        }
     }
 
     fn preferred_formatting_style(
         &self,
         attachment: ReportAttachmentRef<'_, Dynamic>,
+        _: (),
+        _: (),
         report_formatting_function: FormattingFunction,
     ) -> AttachmentFormattingStyle {
+        let Some(attachment) = attachment.downcast_attachment() else {
+            return attachment.preferred_formatting_style_unhooked(report_formatting_function);
+        };
         self.hook
             .preferred_formatting_style(attachment, report_formatting_function)
     }
+
+    fn preferred_formatting_style_preformatted(
+        &self,
+        attachment: ReportAttachmentRef<'_, PreformattedAttachment>,
+        _: (),
+        _: (),
+        report_formatting_function: FormattingFunction,
+    ) -> AttachmentFormattingStyle {
+        self.hook
+            .preferred_formatting_style_preformatted(attachment, report_formatting_function)
+    }
 }
 
-pub(crate) fn display_attachment(
+pub(crate) fn format_attachment(
     attachment: ReportAttachmentRef<'_, Dynamic>,
     attachment_parent: Option<AttachmentParent<'_>>,
     formatter: &mut fmt::Formatter<'_>,
+    report_formatting_function: FormattingFunction,
 ) -> fmt::Result {
-    use_hooks(|hook_data: Option<&HookData>| {
-        if let Some(hook_data) = hook_data {
-            let attachment_formatters: &HookMap = &hook_data.attachment_formatters;
-
-            if let Some(attachment) = attachment.downcast_attachment::<PreformattedAttachment>()
-                && let Some(hook) = attachment_formatters.get(attachment.inner().original_type_id())
-            {
-                return hook.display_preformatted(attachment, attachment_parent, formatter);
-            }
-
-            if let Some(hook) = attachment_formatters.get(attachment.inner_type_id()) {
-                // SAFETY:
-                // 1. The call to `get` guarantees that the returned hook is of type `Hook<A,
-                //    H>`, and `TypeId::of<A>() == attachment.inner_type_id()`. Therefore the
-                //    type `A` stored in the attachment matches the `A` from type `Hook<A, H>`.
-                unsafe {
-                    // @add-unsafe-context: StoredHook
-                    return hook.display(attachment, attachment_parent, formatter);
-                }
-            }
-        }
-        fmt::Display::fmt(&attachment.format_inner_unhooked(), formatter)
-    })
-}
-
-pub(crate) fn debug_attachment(
-    attachment: ReportAttachmentRef<'_, Dynamic>,
-    attachment_parent: Option<AttachmentParent<'_>>,
-    formatter: &mut fmt::Formatter<'_>,
-) -> fmt::Result {
-    use_hooks(|hook_data: Option<&HookData>| {
-        if let Some(hook_data) = hook_data {
-            let attachment_formatters: &HookMap = &hook_data.attachment_formatters;
-
-            if let Some(attachment) = attachment.downcast_attachment::<PreformattedAttachment>()
-                && let Some(hook) = attachment_formatters.get(attachment.inner().original_type_id())
-            {
-                return hook.debug_preformatted(attachment, attachment_parent, formatter);
-            }
-
-            if let Some(hook) = attachment_formatters.get(attachment.inner_type_id()) {
-                // SAFETY:
-                // 1. The call to `get` guarantees that the returned hook is of type `Hook<A,
-                //    H>`, and `TypeId::of<A>() == attachment.inner_type_id()`. Therefore the
-                //    type `A` stored in the attachment matches the `A` from type `Hook<A, H>`.
-                unsafe {
-                    // @add-unsafe-context: StoredHook
-                    return hook.debug(attachment, attachment_parent, formatter);
-                }
-            }
-        }
-        fmt::Debug::fmt(&attachment.format_inner_unhooked(), formatter)
-    })
+    execute_hooked(
+        attachment,
+        attachment_parent,
+        formatter,
+        StoredHook::format_preformatted,
+        StoredHook::format,
+        format_unhooked,
+        report_formatting_function,
+    )
 }
 
 pub(crate) fn get_preferred_formatting_style(
     attachment: ReportAttachmentRef<'_, Dynamic>,
     report_formatting_function: FormattingFunction,
 ) -> AttachmentFormattingStyle {
+    execute_hooked(
+        attachment,
+        (),
+        (),
+        StoredHook::preferred_formatting_style_preformatted,
+        StoredHook::preferred_formatting_style,
+        preferred_formatting_style_unhooked,
+        report_formatting_function,
+    )
+}
+
+#[inline]
+fn execute_hooked<E1, E2, R>(
+    attachment: ReportAttachmentRef<'_, Dynamic>,
+    extra1: E1,
+    extra2: E2,
+    preformatted: HookFn<PreformattedAttachment, E1, E2, R>,
+    dynamic: HookFn<Dynamic, E1, E2, R>,
+    unhooked: UnHookFn<E1, E2, R>,
+    report_formatting_function: FormattingFunction,
+) -> R {
     use_hooks(|hook_data: Option<&HookData>| {
         if let Some(hook_data) = hook_data {
             let attachment_formatters: &HookMap = &hook_data.attachment_formatters;
-            if let Some(inner) = attachment.downcast_inner::<PreformattedAttachment>()
-                && let Some(hook) = attachment_formatters.get(inner.original_type_id())
+
+            if let Some(report) = attachment.downcast_attachment::<PreformattedAttachment>()
+                && let Some(hook) = attachment_formatters.get(report.inner().original_type_id())
             {
-                return hook.preferred_formatting_style(attachment, report_formatting_function);
+                return preformatted(hook, report, extra1, extra2, report_formatting_function);
             }
 
             if let Some(hook) = attachment_formatters.get(attachment.inner_type_id()) {
-                return hook.preferred_formatting_style(attachment, report_formatting_function);
+                return dynamic(hook, attachment, extra1, extra2, report_formatting_function);
             }
         }
-        attachment.preferred_formatting_style_unhooked(report_formatting_function)
+        unhooked(attachment, extra1, extra2, report_formatting_function)
     })
 }
+
+type HookFn<A, E1, E2, R> =
+    fn(&dyn StoredHook, ReportAttachmentRef<'_, A>, E1, E2, FormattingFunction) -> R;
+
+type UnHookFn<E1, E2, R> = fn(ReportAttachmentRef<'_, Dynamic>, E1, E2, FormattingFunction) -> R;

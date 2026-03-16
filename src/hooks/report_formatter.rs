@@ -254,19 +254,12 @@ pub(crate) fn format_report(
     formatter: &mut fmt::Formatter<'_>,
     report_formatting_function: FormattingFunction,
 ) -> fmt::Result {
-    use_hooks(|hook_data: Option<&HookData>| {
-        if let Some(hook_data) = hook_data
-            && let Some(hook) = &hook_data.report_formatter
-        {
-            hook.format_report(report, formatter, report_formatting_function)
-        } else {
-            DefaultReportFormatter::DEFAULT.format_report(
-                report,
-                formatter,
-                report_formatting_function,
-            )
-        }
-    })
+    execute_hooked(
+        report,
+        <dyn ReportFormatter>::format_report,
+        formatter,
+        report_formatting_function,
+    )
 }
 
 pub(crate) fn format_reports(
@@ -274,14 +267,29 @@ pub(crate) fn format_reports(
     formatter: &mut fmt::Formatter<'_>,
     report_formatting_function: FormattingFunction,
 ) -> fmt::Result {
+    execute_hooked(
+        reports,
+        <dyn ReportFormatter>::format_reports,
+        formatter,
+        report_formatting_function,
+    )
+}
+
+fn execute_hooked<R>(
+    report_s: R,
+    format: fn(&dyn ReportFormatter, R, &mut fmt::Formatter<'_>, FormattingFunction) -> fmt::Result,
+    formatter: &mut fmt::Formatter<'_>,
+    report_formatting_function: FormattingFunction,
+) -> fmt::Result {
     use_hooks(|hook_data: Option<&HookData>| {
         if let Some(hook_data) = hook_data
             && let Some(hook) = &hook_data.report_formatter
         {
-            hook.format_reports(reports, formatter, report_formatting_function)
+            format(&**hook, report_s, formatter, report_formatting_function)
         } else {
-            DefaultReportFormatter::DEFAULT.format_reports(
-                reports,
+            format(
+                &DefaultReportFormatter::DEFAULT,
+                report_s,
                 formatter,
                 report_formatting_function,
             )

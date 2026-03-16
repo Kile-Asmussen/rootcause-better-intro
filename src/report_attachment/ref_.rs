@@ -6,7 +6,7 @@ use rootcause_internals::{
 };
 
 use crate::{
-    format_helpers::{Format1With2Callbacks, Format2With2Callbacks},
+    format_helpers::{Format1With2Callbacks, Format2With1Callback},
     hooks::attachment_formatter,
     markers::{Dynamic, SendSync},
     preformatted::{self, PreformattedAttachment},
@@ -218,12 +218,9 @@ impl<'a, A: ?Sized> ReportAttachmentRef<'a, A> {
     /// [`format_inner_unhooked`]: Self::format_inner_unhooked
     #[must_use]
     pub fn format_inner(self) -> impl core::fmt::Display + core::fmt::Debug {
-        Format2With2Callbacks::new(
+        Format2With1Callback::new(
             (self.into_dynamic(), None),
-            (
-                attachment_formatter::display_attachment,
-                attachment_formatter::debug_attachment,
-            ),
+            attachment_formatter::format_attachment,
         )
     }
 
@@ -518,20 +515,6 @@ impl<'a> ReportAttachmentRef<'a, Dynamic> {
         // SAFETY:
         // 1. Guaranteed by the caller
         unsafe { raw.attachment_downcast_unchecked() }
-    }
-}
-
-impl<'a, A: ?Sized> core::fmt::Display for ReportAttachmentRef<'a, A> {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let report: ReportAttachmentRef<'_, Dynamic> = self.into_dynamic();
-        crate::hooks::attachment_formatter::display_attachment(report, None, formatter)
-    }
-}
-
-impl<'a, A: ?Sized> core::fmt::Debug for ReportAttachmentRef<'a, A> {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let report: ReportAttachmentRef<'_, Dynamic> = self.into_dynamic();
-        crate::hooks::attachment_formatter::debug_attachment(report, None, formatter)
     }
 }
 

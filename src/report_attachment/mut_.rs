@@ -642,18 +642,6 @@ impl<'a> ReportAttachmentMut<'a, Dynamic> {
     }
 }
 
-impl<'a, A: ?Sized> core::fmt::Display for ReportAttachmentMut<'a, A> {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        core::fmt::Display::fmt(&self.as_ref(), formatter)
-    }
-}
-
-impl<'a, A: ?Sized> core::fmt::Debug for ReportAttachmentMut<'a, A> {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        core::fmt::Debug::fmt(&self.as_ref(), formatter)
-    }
-}
-
 impl<'a, A: ?Sized> Unpin for ReportAttachmentMut<'a, A> {}
 
 impl<'a, A: Sized> From<ReportAttachmentMut<'a, A>> for ReportAttachmentMut<'a, Dynamic> {

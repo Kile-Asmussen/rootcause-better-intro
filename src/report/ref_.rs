@@ -8,7 +8,7 @@ use rootcause_internals::{
 
 use crate::{
     Report, ReportIter,
-    format_helpers::{Format1With2Callbacks, Format2With1Callback},
+    format_helpers::{Format1With1Callback, Format1With2Callbacks, Format2With1Callback},
     hooks::{context_formatter, report_formatter},
     markers::{Cloneable, Dynamic, Local, Mutable, SendSync, Uncloneable},
     preformatted::{self, PreformattedContext},
@@ -685,12 +685,9 @@ impl<'a, C: ?Sized, O, T> ReportRef<'a, C, O, T> {
     /// ```
     #[must_use]
     pub fn format_current_context(self) -> impl fmt::Display + fmt::Debug {
-        Format1With2Callbacks::new(
+        Format1With1Callback::new(
             (self.into_dynamic().into_uncloneable().into_local(),),
-            (
-                context_formatter::display_context,
-                context_formatter::debug_context,
-            ),
+            context_formatter::format_context,
         )
     }
 

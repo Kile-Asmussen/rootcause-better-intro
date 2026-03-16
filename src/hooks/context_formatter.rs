@@ -120,129 +120,11 @@ use rootcause_internals::handlers::{ContextFormattingStyle, FormattingFunction};
 
 use crate::{
     ReportRef,
+    format_helpers::DisplayDebug,
     hooks::{HookData, use_hooks},
     markers::{Dynamic, Local, Uncloneable},
     preformatted::PreformattedContext,
 };
-
-#[derive(Default)]
-pub(crate) struct HookMap {
-    /// # Safety Invariant
-    ///
-    /// The hook stored under `TypeId::of::<C>()` is guaranteed to be an
-    /// instance of the type `Hook<C, H>`.
-    map: HashMap<TypeId, Box<dyn StoredHook>, rustc_hash::FxBuildHasher>,
-}
-
-impl core::fmt::Debug for HookMap {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.map.values().fmt(f)
-    }
-}
-
-impl HookMap {
-    /// Retrieves the formatter hook for the specified context
-    /// type.
-    ///
-    /// The returned hook is guaranteed to be an instance of type `Hook<C, H>`,
-    /// where `TypeId::of::<C>() == type_id`.
-    fn get(&self, type_id: TypeId) -> Option<&dyn StoredHook> {
-        Some(&**self.map.get(&type_id)?)
-    }
-
-    pub(crate) fn insert<C, H>(&mut self, hook: H)
-    where
-        C: 'static,
-        H: ContextFormatterHook<C>,
-    {
-        let hook: Hook<C, H> = Hook {
-            hook,
-            _hooked_type: PhantomData,
-        };
-        let hook: Box<Hook<C, H>> = Box::new(hook);
-        // We must uphold the safety invariant of HookMap.
-        //
-        // The safety invariant requires that the hook stored under
-        // `TypeId::of::<C>()` is always of type `Hook<C, H>`.
-        //
-        // However this is exactly what we are doing here,
-        // so the invariant is upheld.
-        self.map.insert(TypeId::of::<C>(), hook);
-    }
-}
-
-struct Hook<C, H>
-where
-    C: 'static,
-{
-    hook: H,
-    _hooked_type: PhantomData<fn(C) -> C>,
-}
-
-impl<C, H> core::fmt::Debug for Hook<C, H>
-where
-    C: 'static,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ContextFormattingHook<{}, {}>",
-            core::any::type_name::<C>(),
-            core::any::type_name::<H>(),
-        )
-    }
-}
-
-/// Trait for untyped context formatter hooks.
-///
-/// This trait is guaranteed to only be implemented for [`Hook<C, H>`].
-trait StoredHook: 'static + Send + Sync + core::fmt::Debug {
-    /// Formats the context using Display formatting.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure:
-    ///
-    /// 1. The type `C` stored in the context matches the `C` from type `Hook<C,
-    ///    H>` this is implemented for.
-    unsafe fn display(
-        &self,
-        report: ReportRef<'_, Dynamic, Uncloneable, Local>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result;
-
-    /// Formats the context using Debug formatting.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure:
-    ///
-    /// 1. The type `C` stored in the context matches the `C` from type `Hook<C,
-    ///    H>` this is implemented for.
-    unsafe fn debug(
-        &self,
-        report: ReportRef<'_, Dynamic, Uncloneable, Local>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result;
-
-    fn display_preformatted(
-        &self,
-        report: ReportRef<'_, PreformattedContext, Uncloneable, Local>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result;
-
-    fn debug_preformatted(
-        &self,
-        report: ReportRef<'_, PreformattedContext, Uncloneable, Local>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result;
-
-    fn preferred_context_formatting_style(
-        &self,
-        report: ReportRef<'_, Dynamic, Uncloneable, Local>,
-        report_formatting_function: FormattingFunction,
-    ) -> ContextFormattingStyle;
-}
 
 /// Trait for customizing how contexts of a specific type are formatted in error
 /// reports.
@@ -502,7 +384,7 @@ pub trait ContextFormatterHook<C>: 'static + Send + Sync {
     /// impl ContextFormatterHook<String> for MyFormatter {
     ///     fn preferred_context_formatting_style(
     ///         &self,
-    ///         _report: ReportRef<'_, Dynamic, Uncloneable, Local>,
+    ///         _report: ReportRef<'_, String, Uncloneable, Local>,
     ///         _function: FormattingFunction,
     ///     ) -> ContextFormattingStyle {
     ///         ContextFormattingStyle {
@@ -515,11 +397,177 @@ pub trait ContextFormatterHook<C>: 'static + Send + Sync {
     /// ```
     fn preferred_context_formatting_style(
         &self,
-        report: ReportRef<'_, Dynamic, Uncloneable, Local>,
+        report: ReportRef<'_, C, Uncloneable, Local>,
         report_formatting_function: FormattingFunction,
     ) -> ContextFormattingStyle {
         report.preferred_context_formatting_style_unhooked(report_formatting_function)
     }
+
+    /// Determines the preferred formatting style for this context.
+    ///
+    /// This method allows the formatter to specify how the context should be
+    /// presented, including which formatting function should be used. The
+    /// default implementation delegates to the context's unhooked
+    /// preference.
+    ///
+    /// # Arguments
+    ///
+    /// * `report` - Reference to the report (as [`Dynamic`] as it can be either
+    ///   a `C` or a [`PreformattedContext`])
+    /// * `report_formatting_function` - Whether the overall report uses Display
+    ///   or Debug formatting
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rootcause::{
+    ///     ReportRef,
+    ///     handlers::{ContextFormattingStyle, FormattingFunction},
+    ///     hooks::context_formatter::ContextFormatterHook,
+    ///     markers::{Dynamic, Local, Uncloneable},
+    /// };
+    ///
+    /// struct MyFormatter;
+    /// impl ContextFormatterHook<String> for MyFormatter {
+    ///     fn preferred_context_formatting_style_preformatted(
+    ///         &self,
+    ///         _report: ReportRef<'_, PreformattedContext, Uncloneable, Local>,
+    ///         _function: FormattingFunction,
+    ///     ) -> ContextFormattingStyle {
+    ///         ContextFormattingStyle {
+    ///             function: FormattingFunction::Display,
+    ///             follow_source: false,
+    ///             follow_source_depth: None,
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    fn preferred_context_formatting_style_preformatted(
+        &self,
+        report: ReportRef<'_, PreformattedContext, Uncloneable, Local>,
+        report_formatting_function: FormattingFunction,
+    ) -> ContextFormattingStyle {
+        report.preferred_context_formatting_style_unhooked(report_formatting_function)
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct HookMap {
+    /// # Safety Invariant
+    ///
+    /// The hook stored under `TypeId::of::<C>()` is guaranteed to be an
+    /// instance of the type `Hook<C, H>`.
+    map: HashMap<TypeId, Box<dyn StoredHook>, rustc_hash::FxBuildHasher>,
+}
+
+impl core::fmt::Debug for HookMap {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.map.values().fmt(f)
+    }
+}
+
+impl HookMap {
+    /// Retrieves the formatter hook for the specified context
+    /// type.
+    ///
+    /// The returned hook is guaranteed to be an instance of type `Hook<C, H>`,
+    /// where `TypeId::of::<C>() == type_id`.
+    fn get(&self, type_id: TypeId) -> Option<&dyn StoredHook> {
+        Some(&**self.map.get(&type_id)?)
+    }
+
+    pub(crate) fn insert<C, H>(&mut self, hook: H)
+    where
+        C: 'static,
+        H: ContextFormatterHook<C>,
+    {
+        let hook: Hook<C, H> = Hook {
+            hook,
+            _hooked_type: PhantomData,
+        };
+        let hook: Box<Hook<C, H>> = Box::new(hook);
+        // We must uphold the safety invariant of HookMap.
+        //
+        // The safety invariant requires that the hook stored under
+        // `TypeId::of::<C>()` is always of type `Hook<C, H>`.
+        //
+        // However this is exactly what we are doing here,
+        // so the invariant is upheld.
+        self.map.insert(TypeId::of::<C>(), hook);
+    }
+}
+
+struct Hook<C, H>
+where
+    C: 'static,
+{
+    hook: H,
+    _hooked_type: PhantomData<fn(C) -> C>,
+}
+
+impl<C, H> core::fmt::Debug for Hook<C, H>
+where
+    C: 'static,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ContextFormattingHook<{}, {}>",
+            core::any::type_name::<C>(),
+            core::any::type_name::<H>(),
+        )
+    }
+}
+
+/// Trait for untyped context formatter hooks.
+///
+/// This trait is guaranteed to only be implemented for [`Hook<C, H>`].
+trait StoredHook: 'static + Send + Sync + core::fmt::Debug {
+    fn format(
+        &self,
+        report: ReportRef<'_, Dynamic, Uncloneable, Local>,
+        formatter: &mut fmt::Formatter<'_>,
+        report_formatting_function: FormattingFunction,
+    ) -> fmt::Result;
+
+    fn format_preformatted(
+        &self,
+        report: ReportRef<'_, PreformattedContext, Uncloneable, Local>,
+        formatter: &mut fmt::Formatter<'_>,
+        report_formatting_function: FormattingFunction,
+    ) -> fmt::Result;
+
+    fn preferred_context_formatting_style(
+        &self,
+        report: ReportRef<'_, Dynamic, Uncloneable, Local>,
+        _: (),
+        report_formatting_function: FormattingFunction,
+    ) -> ContextFormattingStyle;
+
+    fn preferred_context_formatting_style_preformatted(
+        &self,
+        report: ReportRef<'_, PreformattedContext, Uncloneable, Local>,
+        _: (),
+        report_formatting_function: FormattingFunction,
+    ) -> ContextFormattingStyle;
+}
+
+fn format_unhooked(
+    report: ReportRef<'_, Dynamic, Uncloneable, Local>,
+    formatter: &mut fmt::Formatter<'_>,
+    report_formatting_function: FormattingFunction,
+) -> fmt::Result {
+    report
+        .format_current_context_unhooked()
+        .fmt(formatter, report_formatting_function)
+}
+
+fn preferred_context_formatting_style_unhooked(
+    report: ReportRef<'_, Dynamic, Uncloneable, Local>,
+    _: (),
+    report_formatting_function: FormattingFunction,
+) -> ContextFormattingStyle {
+    report.preferred_context_formatting_style_unhooked(report_formatting_function)
 }
 
 impl<C, H> StoredHook for Hook<C, H>
@@ -527,110 +575,68 @@ where
     C: 'static,
     H: ContextFormatterHook<C>,
 {
-    unsafe fn display(
+    fn format(
         &self,
         report: ReportRef<'_, Dynamic, Uncloneable, Local>,
         formatter: &mut fmt::Formatter<'_>,
+        report_formatting_function: FormattingFunction,
     ) -> fmt::Result {
-        // SAFETY:
-        // 1. Guaranteed by the caller
-        let report = unsafe { report.downcast_report_unchecked::<C>() };
-        self.hook.display(report, formatter)
+        let report = report.downcast_report().ok_or(fmt::Error)?;
+        match report_formatting_function {
+            FormattingFunction::Display => self.hook.display(report, formatter),
+            FormattingFunction::Debug => self.hook.debug(report, formatter),
+        }
     }
 
-    unsafe fn debug(
-        &self,
-        report: ReportRef<'_, Dynamic, Uncloneable, Local>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
-        // SAFETY:
-        // 1. Guaranteed by the caller
-        let report = unsafe { report.downcast_report_unchecked::<C>() };
-        self.hook.debug(report, formatter)
-    }
-
-    fn display_preformatted(
+    fn format_preformatted(
         &self,
         report: ReportRef<'_, PreformattedContext, Uncloneable, Local>,
         formatter: &mut fmt::Formatter<'_>,
+        report_formatting_function: FormattingFunction,
     ) -> fmt::Result {
-        self.hook.display_preformatted(report, formatter)
-    }
-
-    fn debug_preformatted(
-        &self,
-        report: ReportRef<'_, PreformattedContext, Uncloneable, Local>,
-        formatter: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
-        self.hook.debug_preformatted(report, formatter)
+        match report_formatting_function {
+            FormattingFunction::Display => self.hook.display_preformatted(report, formatter),
+            FormattingFunction::Debug => self.hook.debug_preformatted(report, formatter),
+        }
     }
 
     fn preferred_context_formatting_style(
         &self,
         report: ReportRef<'_, Dynamic, Uncloneable, Local>,
+        _: (),
         report_formatting_function: FormattingFunction,
     ) -> ContextFormattingStyle {
+        let Some(report) = report.downcast_report() else {
+            return report.preferred_context_formatting_style_unhooked(report_formatting_function);
+        };
         self.hook
             .preferred_context_formatting_style(report, report_formatting_function)
     }
+
+    fn preferred_context_formatting_style_preformatted(
+        &self,
+        report: ReportRef<'_, PreformattedContext, Uncloneable, Local>,
+        _: (),
+        report_formatting_function: FormattingFunction,
+    ) -> ContextFormattingStyle {
+        self.hook
+            .preferred_context_formatting_style_preformatted(report, report_formatting_function)
+    }
 }
 
-pub(crate) fn display_context(
+pub(crate) fn format_context(
     report: ReportRef<'_, Dynamic, Uncloneable, Local>,
     formatter: &mut fmt::Formatter<'_>,
+    report_formatting_function: FormattingFunction,
 ) -> fmt::Result {
-    use_hooks(|hook_data: Option<&HookData>| {
-        if let Some(hook_data) = hook_data {
-            let context_formatters: &HookMap = &hook_data.context_formatters;
-            if let Some(report) = report.downcast_report::<PreformattedContext>()
-                && let Some(hook) =
-                    context_formatters.get(report.current_context().original_type_id())
-            {
-                return hook.display_preformatted(report, formatter);
-            }
-
-            if let Some(hook) = context_formatters.get(report.current_context_type_id()) {
-                // SAFETY:
-                // 1. The call to `get` guarantees that the returned hook is of type `Hook<C,
-                //    H>`, and `TypeId::of<C>() == report.current_context_type_id()`. Therefore
-                //    the type `C` stored in the context matches the `C` from type `Hook<C, H>`.
-                unsafe {
-                    // @add-unsafe-context: StoredHook
-                    return hook.display(report, formatter);
-                }
-            }
-        }
-        fmt::Display::fmt(&report.format_current_context_unhooked(), formatter)
-    })
-}
-
-pub(crate) fn debug_context(
-    report: ReportRef<'_, Dynamic, Uncloneable, Local>,
-    formatter: &mut fmt::Formatter<'_>,
-) -> fmt::Result {
-    use_hooks(|hook_data: Option<&HookData>| {
-        if let Some(hook_data) = hook_data {
-            let context_formatters: &HookMap = &hook_data.context_formatters;
-            if let Some(report) = report.downcast_report::<PreformattedContext>()
-                && let Some(hook) =
-                    context_formatters.get(report.current_context().original_type_id())
-            {
-                return hook.debug_preformatted(report, formatter);
-            }
-
-            if let Some(hook) = context_formatters.get(report.current_context_type_id()) {
-                // SAFETY:
-                // 1. The call to `get` guarantees that the returned hook is of type `Hook<C,
-                //    H>`, and `TypeId::of<C>() == report.current_context_type_id()`. Therefore
-                //    the type `C` stored in the context matches the `C` from type `Hook<C, H>`.
-                unsafe {
-                    // @add-unsafe-context: StoredHook
-                    return hook.debug(report, formatter);
-                }
-            }
-        }
-        fmt::Debug::fmt(&report.format_current_context_unhooked(), formatter)
-    })
+    execute_hooked(
+        report,
+        formatter,
+        StoredHook::format_preformatted,
+        StoredHook::format,
+        format_unhooked,
+        report_formatting_function,
+    )
 }
 
 /// # Arguments
@@ -641,24 +647,49 @@ pub(crate) fn debug_context(
 ///
 /// [`Display`]: core::fmt::Display
 /// [`Debug`]: core::fmt::Debug
-pub(crate) fn get_preferred_context_formatting_style(
-    report: ReportRef<'_, Dynamic, Uncloneable, Local>,
+pub(crate) fn get_preferred_context_formatting_style<'a>(
+    report: ReportRef<'a, Dynamic, Uncloneable, Local>,
     report_formatting_function: FormattingFunction,
 ) -> ContextFormattingStyle {
+    execute_hooked(
+        report,
+        (),
+        StoredHook::preferred_context_formatting_style_preformatted,
+        StoredHook::preferred_context_formatting_style,
+        preferred_context_formatting_style_unhooked,
+        report_formatting_function,
+    )
+}
+
+#[inline]
+fn execute_hooked<E, R>(
+    report: ReportRef<'_, Dynamic, Uncloneable, Local>,
+    extra: E,
+    preformatted: HookFn<PreformattedContext, E, R>,
+    dynamic: HookFn<Dynamic, E, R>,
+    unhooked: UnHookFn<E, R>,
+    report_formatting_function: FormattingFunction,
+) -> R {
     use_hooks(|hook_data: Option<&HookData>| {
         if let Some(hook_data) = hook_data {
             let context_formatters: &HookMap = &hook_data.context_formatters;
 
-            if let Some(current_context) = report.downcast_current_context::<PreformattedContext>()
-                && let Some(hook) = context_formatters.get(current_context.original_type_id())
+            if let Some(report) = report.downcast_report::<PreformattedContext>()
+                && let Some(hook) =
+                    context_formatters.get(report.current_context().original_type_id())
             {
-                return hook.preferred_context_formatting_style(report, report_formatting_function);
+                return preformatted(hook, report, extra, report_formatting_function);
             }
 
             if let Some(hook) = context_formatters.get(report.current_context_type_id()) {
-                return hook.preferred_context_formatting_style(report, report_formatting_function);
+                return dynamic(hook, report, extra, report_formatting_function);
             }
         }
-        report.preferred_context_formatting_style_unhooked(report_formatting_function)
+        unhooked(report, extra, report_formatting_function)
     })
 }
+
+type HookFn<C, E, R> =
+    fn(&dyn StoredHook, ReportRef<'_, C, Uncloneable, Local>, E, FormattingFunction) -> R;
+
+type UnHookFn<E, R> = fn(ReportRef<'_, Dynamic, Uncloneable, Local>, E, FormattingFunction) -> R;
