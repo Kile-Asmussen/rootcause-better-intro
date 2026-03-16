@@ -6,7 +6,7 @@ use rootcause_internals::{
 };
 
 use crate::{
-    format_helpers::{Format2WithFunctions, FormatWithFunctions},
+    format_helpers::{Format1With2Callbacks, Format2With2Callbacks},
     hooks::attachment_formatter,
     markers::{Dynamic, SendSync},
     preformatted::{self, PreformattedAttachment},
@@ -218,12 +218,13 @@ impl<'a, A: ?Sized> ReportAttachmentRef<'a, A> {
     /// [`format_inner_unhooked`]: Self::format_inner_unhooked
     #[must_use]
     pub fn format_inner(self) -> impl core::fmt::Display + core::fmt::Debug {
-        Format2WithFunctions {
-            state: self.into_dynamic(),
-            value: None,
-            display: attachment_formatter::display_attachment,
-            debug: attachment_formatter::debug_attachment,
-        }
+        Format2With2Callbacks::new(
+            (self.into_dynamic(), None),
+            (
+                attachment_formatter::display_attachment,
+                attachment_formatter::debug_attachment,
+            ),
+        )
     }
 
     /// Formats the inner attachment data without applying any formatting hooks.
@@ -242,11 +243,13 @@ impl<'a, A: ?Sized> ReportAttachmentRef<'a, A> {
     /// [`format_inner`]: Self::format_inner
     #[must_use]
     pub fn format_inner_unhooked(self) -> impl core::fmt::Display + core::fmt::Debug {
-        FormatWithFunctions {
-            state: self.as_raw_ref(),
-            display: RawAttachmentRef::attachment_display,
-            debug: RawAttachmentRef::attachment_debug,
-        }
+        Format1With2Callbacks::new(
+            (self.as_raw_ref(),),
+            (
+                RawAttachmentRef::attachment_display,
+                RawAttachmentRef::attachment_debug,
+            ),
+        )
     }
 
     /// Changes the inner attachment type of the [`ReportAttachmentRef`] to

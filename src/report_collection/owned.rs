@@ -4,7 +4,7 @@ use rootcause_internals::handlers::{ContextHandler, FormattingFunction};
 
 use crate::{
     Report, ReportRef,
-    format_helpers::Format2WithFunction,
+    format_helpers::Format2With1Callback,
     handlers,
     hooks::report_formatter::ReportFormatter,
     markers::{self, Cloneable, Dynamic, Local, Mutable, SendSync, Uncloneable},
@@ -580,11 +580,7 @@ impl<C: ?Sized, T> ReportCollection<C, T> {
             ReportRef::<Dynamic, Uncloneable, Local>::from_raw_slice(raw)
         };
 
-        Format2WithFunction {
-            state: hook,
-            value: slice,
-            formatter: ReportFormatter::format_reports,
-        }
+        Format2With1Callback::new((hook, slice), ReportFormatter::format_reports)
     }
 
     /// Converts the collection to use type-erased contexts via [`Dynamic`].

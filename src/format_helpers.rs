@@ -10,101 +10,119 @@ use core::fmt;
 
 use rootcause_internals::handlers::FormattingFunction;
 
-/// Simple implementation of [`Display`](fmt::Display) + [`Debug`](fmt::Debug) via
-/// two provided callback functions.
-#[derive(Clone, Copy)]
-pub struct FormatWithFunctions<State: Copy> {
-    /// The state that is formatted
-    pub state: State,
-    /// Callback function for the [`Display::fmt`](fmt::Display::fmt) implementation
-    pub display: fn(State, &mut fmt::Formatter<'_>) -> fmt::Result,
-    /// Callback function for the [`Debug::fmt`](fmt::Debug::fmt) implementation
-    pub debug: fn(State, &mut fmt::Formatter<'_>) -> fmt::Result,
-}
-
-impl<State: Copy> fmt::Display for FormatWithFunctions<State> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (self.display)(self.state, f)
-    }
-}
-
-impl<State: Copy> fmt::Debug for FormatWithFunctions<State> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (self.debug)(self.state, f)
-    }
-}
-
-/// Implementation of [`Display`](fmt::Display) + [`Debug`](fmt::Debug) via
-/// a single callback function that chooses behavior based on a [`FormattingFunction`].
+/// Helper struct that implements [`Display`] + [`Debug`] using various
+/// callbacks.
 ///
-/// (Not actually used in the library, but included for completeness.)
-#[derive(Clone, Copy)]
-pub struct FormatWithFunction<State: Copy> {
-    /// The state that is formatted
-    pub state: State,
-    /// The callback function that handles both [`Display::fmt`](fmt::Display::fmt) and [`Debug::fmt`](fmt::Debug::fmt)
-    pub formatter: fn(State, &mut fmt::Formatter<'_>, FormattingFunction) -> fmt::Result,
+/// See:
+/// - [`Format1With2Callbacks`]
+/// - [`Format2With2Callbacks`]
+/// - [`Format1With1Callback`]
+/// - [`Format2With1Callback`]
+///
+/// [`Display`]: fmt::Display
+/// [`Debug`]: fmt::Debug
+pub struct FormattingCallbacks<Data: Copy, Callback: Copy> {
+    data: Data,
+    callback: Callback,
 }
 
-impl<State: Copy> fmt::Display for FormatWithFunction<State> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (self.formatter)(self.state, f, FormattingFunction::Display)
+/// Format one item using two formatting functions. Essentially
+/// it contains an item `D` and two functions fitting the type signature
+/// of [`fmt::Display::fmt`].
+pub type Format1With2Callbacks<D> = FormattingCallbacks<(D,), (FmtFn<D>, FmtFn<D>)>;
+
+/// Format two item s using two formatting functions.
+pub type Format2With2Callbacks<D, E> = FormattingCallbacks<(D, E), (Fmt2Fn<D, E>, Fmt2Fn<D, E>)>;
+
+/// Format one item using a single formatting function. Essentially
+/// it contains an item `D` and a function that chooses [`Debug`] or
+/// [`Display`] behavior based on a [`FormattingFunction`].
+///
+/// [`Debug`]: fmt::Debug
+/// [`Display`]: fmt::Display
+pub type Format1With1Callback<D> = FormattingCallbacks<(D,), FmtFnX<D>>;
+
+/// Format two item s using two formatting functions.
+pub type Format2With1Callback<D, E> = FormattingCallbacks<(D, E), Fmt2FnX<D, E>>;
+
+type FmtFn<T> = fn(T, &mut fmt::Formatter<'_>) -> fmt::Result;
+type Fmt2Fn<T, U> = fn(T, U, &mut fmt::Formatter<'_>) -> fmt::Result;
+
+type FmtFnX<T> = fn(T, &mut fmt::Formatter<'_>, FormattingFunction) -> fmt::Result;
+type Fmt2FnX<T, U> = fn(T, U, &mut fmt::Formatter<'_>, FormattingFunction) -> fmt::Result;
+
+impl<D: Copy> Format1With2Callbacks<D> {
+    ///
+    pub fn new(data: (D,), callback: (FmtFn<D>, FmtFn<D>)) -> Self {
+        Self { data, callback }
     }
 }
 
-impl<State: Copy> fmt::Debug for FormatWithFunction<State> {
+impl<D: Copy> fmt::Display for Format1With2Callbacks<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (self.formatter)(self.state, f, FormattingFunction::Debug)
+        (self.callback.0)(self.data.0, f)
     }
 }
 
-/// Implementation of [`Display`](fmt::Display) + [`Debug`](fmt::Debug)
-/// via two callback functions each taking an extra argument.
-#[derive(Clone, Copy)]
-pub struct Format2WithFunctions<State: Copy, Value: Copy> {
-    /// The state that is formatted
-    pub state: State,
-    /// The additional value passed to the callback functions
-    pub value: Value,
-    /// Callback function for the [`Display::fmt`](fmt::Display::fmt) implementation
-    pub display: fn(State, Value, &mut fmt::Formatter<'_>) -> fmt::Result,
-    /// Callback function for the [`Debug::fmt`](fmt::Debug::fmt) implementation
-    pub debug: fn(State, Value, &mut fmt::Formatter<'_>) -> fmt::Result,
-}
-
-impl<S: Copy, V: Copy> fmt::Display for Format2WithFunctions<S, V> {
+impl<D: Copy> fmt::Debug for Format1With2Callbacks<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (self.display)(self.state, self.value, f)
+        (self.callback.1)(self.data.0, f)
     }
 }
 
-impl<S: Copy, B: Copy> fmt::Debug for Format2WithFunctions<S, B> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (self.debug)(self.state, self.value, f)
+impl<D: Copy, E: Copy> FormattingCallbacks<(D, E), (Fmt2Fn<D, E>, Fmt2Fn<D, E>)> {
+    ///
+    pub fn new(data: (D, E), callback: (Fmt2Fn<D, E>, Fmt2Fn<D, E>)) -> Self {
+        Self { data, callback }
     }
 }
 
-/// Implementation of [`Display`](fmt::Display) + [`Debug`](fmt::Debug)
-/// via a single callback function that chooses behavior based on a [`FormattingFunction`]
-/// and takes an extra argument.
-#[derive(Clone, Copy)]
-pub struct Format2WithFunction<State: Copy, Value: Copy> {
-    /// The state that is formatted
-    pub state: State,
-    /// The additional value passed to the callback function
-    pub value: Value,
-    /// The callback function that handles both [`Display::fmt`](fmt::Display::fmt) and [`Debug::fmt`](fmt::Debug::fmt)
-    pub formatter: fn(State, Value, &mut fmt::Formatter<'_>, FormattingFunction) -> fmt::Result,
-}
-
-impl<S: Copy, V: Copy> fmt::Display for Format2WithFunction<S, V> {
+impl<D: Copy, E: Copy> fmt::Display for FormattingCallbacks<(D, E), (Fmt2Fn<D, E>, Fmt2Fn<D, E>)> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (self.formatter)(self.state, self.value, f, FormattingFunction::Display)
+        (self.callback.0)(self.data.0, self.data.1, f)
     }
 }
 
-impl<S: Copy, V: Copy> fmt::Debug for Format2WithFunction<S, V> {
+impl<D: Copy, E: Copy> fmt::Debug for FormattingCallbacks<(D, E), (Fmt2Fn<D, E>, Fmt2Fn<D, E>)> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (self.formatter)(self.state, self.value, f, FormattingFunction::Debug)
+        (self.callback.1)(self.data.0, self.data.1, f)
+    }
+}
+
+impl<D: Copy> FormattingCallbacks<(D,), FmtFnX<D>> {
+    ///
+    pub fn new(data: (D,), callback: FmtFnX<D>) -> Self {
+        Self { data, callback }
+    }
+}
+
+impl<D: Copy> fmt::Debug for FormattingCallbacks<(D,), FmtFnX<D>> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        (self.callback)(self.data.0, f, FormattingFunction::Debug)
+    }
+}
+
+impl<D: Copy> fmt::Display for FormattingCallbacks<(D,), FmtFnX<D>> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        (self.callback)(self.data.0, f, FormattingFunction::Display)
+    }
+}
+
+impl<D: Copy, E: Copy> FormattingCallbacks<(D, E), Fmt2FnX<D, E>> {
+    ///
+    pub fn new(data: (D, E), callback: Fmt2FnX<D, E>) -> Self {
+        Self { data, callback }
+    }
+}
+
+impl<D: Copy, E: Copy> fmt::Debug for FormattingCallbacks<(D, E), Fmt2FnX<D, E>> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        (self.callback)(self.data.0, self.data.1, f, FormattingFunction::Debug)
+    }
+}
+
+impl<D: Copy, E: Copy> fmt::Display for FormattingCallbacks<(D, E), Fmt2FnX<D, E>> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        (self.callback)(self.data.0, self.data.1, f, FormattingFunction::Display)
     }
 }

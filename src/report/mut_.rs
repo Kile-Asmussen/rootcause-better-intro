@@ -3,9 +3,7 @@ use core::{any::TypeId, fmt};
 use rootcause_internals::handlers::{ContextFormattingStyle, FormattingFunction};
 
 use crate::{
-    Report, ReportIter, ReportRef,
-    format_helpers::FormatWithFunctions,
-    handlers,
+    Report, ReportIter, ReportRef, handlers,
     hooks::context_formatter,
     markers::{self, Cloneable, Dynamic, Local, Mutable, SendSync, Uncloneable},
     preformatted::PreformattedContext,
@@ -815,11 +813,7 @@ impl<'a, C: ?Sized, T> ReportMut<'a, C, T> {
     /// ```
     #[must_use]
     pub fn format_current_context(&self) -> impl fmt::Display + fmt::Debug {
-        FormatWithFunctions {
-            state: self.as_ref().into_dynamic().into_uncloneable().into_local(),
-            display: context_formatter::display_context,
-            debug: context_formatter::debug_context,
-        }
+        self.as_ref().format_current_context()
     }
 
     /// Formats the current context without hook processing.
@@ -834,11 +828,7 @@ impl<'a, C: ?Sized, T> ReportMut<'a, C, T> {
     /// ```
     #[must_use]
     pub fn format_current_context_unhooked(&self) -> impl fmt::Display + fmt::Debug {
-        FormatWithFunctions {
-            state: self.as_raw_ref(),
-            display: rootcause_internals::RawReportRef::context_display,
-            debug: rootcause_internals::RawReportRef::context_debug,
-        }
+        self.as_ref().format_current_context_unhooked()
     }
 
     /// Formats the entire report using a specific report formatting hook.

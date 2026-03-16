@@ -8,7 +8,7 @@ use rootcause_internals::{
 
 use crate::{
     Report, ReportIter,
-    format_helpers::{Format2WithFunction, FormatWithFunctions},
+    format_helpers::{Format1With2Callbacks, Format2With1Callback},
     hooks::{context_formatter, report_formatter},
     markers::{Cloneable, Dynamic, Local, Mutable, SendSync, Uncloneable},
     preformatted::{self, PreformattedContext},
@@ -685,11 +685,13 @@ impl<'a, C: ?Sized, O, T> ReportRef<'a, C, O, T> {
     /// ```
     #[must_use]
     pub fn format_current_context(self) -> impl fmt::Display + fmt::Debug {
-        FormatWithFunctions {
-            state: self.into_dynamic().into_uncloneable().into_local(),
-            display: context_formatter::display_context,
-            debug: context_formatter::debug_context,
-        }
+        Format1With2Callbacks::new(
+            (self.into_dynamic().into_uncloneable().into_local(),),
+            (
+                context_formatter::display_context,
+                context_formatter::debug_context,
+            ),
+        )
     }
 
     /// Formats the current context without hook processing.
@@ -704,11 +706,10 @@ impl<'a, C: ?Sized, O, T> ReportRef<'a, C, O, T> {
     /// ```
     #[must_use]
     pub fn format_current_context_unhooked(self) -> impl fmt::Display + fmt::Debug {
-        FormatWithFunctions {
-            state: self.as_raw_ref(),
-            display: RawReportRef::context_display,
-            debug: RawReportRef::context_debug,
-        }
+        Format1With2Callbacks::new(
+            (self.as_raw_ref(),),
+            (RawReportRef::context_display, RawReportRef::context_debug),
+        )
     }
 
     /// Formats the entire report using a specific report formatting hook.
@@ -740,11 +741,10 @@ impl<'a, C: ?Sized, O, T> ReportRef<'a, C, O, T> {
         self,
         hook: &H,
     ) -> impl fmt::Display + fmt::Debug {
-        Format2WithFunction {
-            state: hook,
-            value: self.into_dynamic().into_uncloneable().into_local(),
-            formatter: H::format_report,
-        }
+        Format2With1Callback::new(
+            (hook, self.into_dynamic().into_uncloneable().into_local()),
+            H::format_report,
+        )
     }
 
     /// Gets the preferred formatting style for the context with hook
