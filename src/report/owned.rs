@@ -10,6 +10,7 @@ use crate::{
     handlers::{self, ContextHandler},
     markers::{self, Cloneable, Dynamic, Local, Mutable, SendSync, Uncloneable},
     preformatted::{self, PreformattedContext},
+    report::iter::ReportIterTraversalStrategy,
     report_attachment::ReportAttachment,
     report_attachments::ReportAttachments,
     report_collection::ReportCollection,
@@ -1187,6 +1188,15 @@ impl<C: ?Sized, O, T> Report<C, O, T> {
         self.as_ref().iter_reports()
     }
 
+    /// TODO
+    pub fn iter_reports_by<S>(&self) -> ReportIter<'_, O::RefMarker, T, S>
+    where
+        O: markers::ReportOwnershipMarker,
+        S: ReportIterTraversalStrategy<O::RefMarker, T>,
+    {
+        self.as_ref().iter_reports_by()
+    }
+
     /// Returns an iterator over child reports in the report hierarchy
     /// (excluding this report).
     ///
@@ -1236,6 +1246,15 @@ impl<C: ?Sized, O, T> Report<C, O, T> {
         O: markers::ReportOwnershipMarker,
     {
         self.as_uncloneable_ref().iter_sub_reports()
+    }
+
+    /// TODO
+    pub fn iter_sub_reports_by<S>(&self) -> ReportIter<'_, O::RefMarker, T, S>
+    where
+        O: markers::ReportOwnershipMarker,
+        S: ReportIterTraversalStrategy<O::RefMarker, T>,
+    {
+        self.as_ref().iter_sub_reports_by()
     }
 
     /// Creates a new report, which has the same structure as the current

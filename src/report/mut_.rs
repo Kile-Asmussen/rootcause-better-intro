@@ -6,6 +6,7 @@ use crate::{
     Report, ReportIter, ReportRef, handlers,
     markers::{self, Cloneable, Dynamic, Local, Mutable, SendSync, Uncloneable},
     preformatted::PreformattedContext,
+    report::iter::ReportIterTraversalStrategy,
     report_attachment::ReportAttachment,
     report_attachments::ReportAttachments,
     report_collection::ReportCollection,
@@ -649,6 +650,14 @@ impl<'a, C: ?Sized, T> ReportMut<'a, C, T> {
         self.as_ref().iter_reports()
     }
 
+    /// TODO
+    pub fn iter_reports_by<S>(&self) -> ReportIter<'_, Uncloneable, T, S>
+    where
+        S: ReportIterTraversalStrategy<Uncloneable, T>,
+    {
+        self.as_ref().iter_reports_by()
+    }
+
     /// Returns an iterator over child reports in the report hierarchy
     /// (excluding this report).
     ///
@@ -697,6 +706,14 @@ impl<'a, C: ?Sized, T> ReportMut<'a, C, T> {
     /// ```
     pub fn iter_sub_reports(&self) -> ReportIter<'_, Cloneable, T> {
         self.as_ref().iter_sub_reports()
+    }
+
+    /// TODO
+    pub fn iter_sub_reports_by<S>(&self) -> ReportIter<'_, Cloneable, T, S>
+    where
+        S: ReportIterTraversalStrategy<Cloneable, T>,
+    {
+        self.as_ref().iter_sub_reports_by()
     }
 
     /// Creates a new report, which has the same structure as the current

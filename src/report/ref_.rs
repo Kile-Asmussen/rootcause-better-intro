@@ -1,4 +1,4 @@
-use alloc::vec;
+use alloc::collections::vec_deque::VecDeque;
 use core::any::TypeId;
 
 use rootcause_internals::handlers::{ContextFormattingStyle, FormattingFunction};
@@ -7,6 +7,7 @@ use crate::{
     Report, ReportIter,
     markers::{Cloneable, Dynamic, Local, Mutable, SendSync, Uncloneable},
     preformatted::{self, PreformattedContext},
+    report::iter::ReportIterTraversalStrategy,
     report_attachments::ReportAttachments,
     report_collection::ReportCollection,
     util::{ErrorNoSourceWrapper, format_helper},
@@ -265,9 +266,7 @@ impl<'a, C: ?Sized, O, T> ReportRef<'a, C, O, T> {
     /// The caller must ensure:
     ///
     /// 1. `O` must either be `Cloneable` or `Uncloneable`.
-    pub(crate) unsafe fn from_cloneable(
-        report: ReportRef<'a, C, Cloneable, T>,
-    ) -> ReportRef<'a, C, O, T> {
+    pub unsafe fn from_cloneable(report: ReportRef<'a, C, Cloneable, T>) -> ReportRef<'a, C, O, T> {
         let raw = report.as_raw_ref();
 
         // SAFETY:
@@ -503,8 +502,15 @@ impl<'a, C: ?Sized, O, T> ReportRef<'a, C, O, T> {
     /// assert_eq!(all_reports.len(), 6);
     /// ```
     pub fn iter_reports(self) -> ReportIter<'a, O, T> {
-        let stack = vec![self.into_dynamic()];
-        ReportIter::from_raw(stack)
+        ReportIter::from_buffer(FromIterator::from_iter([self.into_dynamic()]))
+    }
+
+    /// TODO
+    pub fn iter_reports_by<S>(self) -> ReportIter<'a, O, T, S>
+    where
+        S: ReportIterTraversalStrategy<O, T>,
+    {
+        ReportIter::from_buffer(FromIterator::from_iter([self.into_dynamic()]))
     }
 
     /// Returns an iterator over child reports in the report hierarchy
@@ -554,8 +560,15 @@ impl<'a, C: ?Sized, O, T> ReportRef<'a, C, O, T> {
     /// assert_eq!(sub_reports.len(), 5);
     /// ```
     pub fn iter_sub_reports(self) -> ReportIter<'a, Cloneable, T> {
-        let stack = self.children().iter().rev().collect();
-        ReportIter::from_raw(stack)
+        ReportIter::from_buffer(self.children().iter().rev().collect())
+    }
+
+    /// TODO
+    pub fn iter_sub_reports_by<S>(self) -> ReportIter<'a, O, T, S>
+    where
+        S: ReportIterTraversalStrategy<O, T>,
+    {
+        ReportIter::from_buffer(self.children().iter().rev().collect())
     }
 
     /// Creates a new report, which has the same structure as the current
